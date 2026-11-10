@@ -3,85 +3,113 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Vibe Hub</title>
+<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#7c3aed">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Connect, Play, Vibe">
-<title>Vibe Hub</title>
-<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div id="authScreen">
-  <div class="auth-card">
-    <div class="auth-logo">🎮 Vibe Hub</div>
-    <p class="auth-sub">Connect · Play · Vibe</p>
+  <div class="auth-box">
+    <h1>🎉 Vibe Hub</h1>
+    <p class="auth-sub">Your social playground</p>
     <div class="auth-tabs">
-      <button class="tab active" id="tabLogin" type="button" onclick="showTab('login')">Login</button>
-      <button class="tab" id="tabRegister" type="button" onclick="showTab('register')">Register</button>
+      <button id="tabLogin" class="tab-btn active" onclick="showTab('login')">Login</button>
+      <button id="tabRegister" class="tab-btn" onclick="showTab('register')">Register</button>
     </div>
-    <div id="loginForm">
-      <input id="loginUser" placeholder="Username" autocomplete="username">
-      <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
-      <button class="btn-primary full" id="loginBtn" type="button" onclick="doLogin()">Log In</button>
+    <div id="loginForm" class="auth-form">
+      <input id="loginUser" type="text" placeholder="Username">
+      <input id="loginPass" type="password" placeholder="Password">
+      <button class="btn-primary" onclick="doLogin()">Login</button>
+      <p id="loginMsg" class="msg"></p>
     </div>
-    <div id="registerForm" class="hidden">
-      <input id="regUser" placeholder="Choose a username" autocomplete="username">
-      <input id="regName" placeholder="Display name">
-      <input id="regPass" type="password" placeholder="Password" autocomplete="new-password">
-      <button class="btn-primary full" id="regBtn" type="button" onclick="doRegister()">Create Account</button>
+    <div id="registerForm" class="auth-form" style="display:none">
+      <input id="regUser" type="text" placeholder="Username">
+      <input id="regEmail" type="email" placeholder="Email">
+      <input id="regPass" type="password" placeholder="Password">
+      <button class="btn-primary" onclick="doRegister()">Create Account</button>
+      <p id="regMsg" class="msg"></p>
     </div>
-    <p id="authMsg" class="msg"></p>
   </div>
 </div>
 
-<div id="appScreen" class="hidden">
-  <aside id="sidebar">
-    <div class="sidebar-logo">🎮 <span>Vibe Hub</span></div>
-    <nav id="navMenu">
-      <button class="nav-btn active" data-view="feed" type="button" onclick="showView('feed')"><i class="fas fa-home"></i><span>Feed</span></button>
-      <button class="nav-btn" data-view="chat" type="button" onclick="showView('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
-      <button class="nav-btn" data-view="games" type="button" onclick="showView('games')"><i class="fas fa-gamepad"></i><span>Games</span></button>
-      <button class="nav-btn" data-view="friends" type="button" onclick="showView('friends')"><i class="fas fa-user-friends"></i><span>Friends</span></button>
-      <button class="nav-btn" data-view="leaderboard" type="button" onclick="showView('leaderboard')"><i class="fas fa-trophy"></i><span>Leaderboard</span></button>
-      <button class="nav-btn" data-view="profile" type="button" onclick="showView('profile')"><i class="fas fa-user-circle"></i><span>Profile</span></button>
-      <button class="nav-btn" data-view="premium" type="button" onclick="showView('premium')"><i class="fas fa-crown"></i><span>Premium</span></button>
-      <button class="nav-btn" data-view="admin" id="navAdmin" type="button" style="display:none" onclick="showView('admin')"><i class="fas fa-shield-alt"></i><span>Admin</span></button>
-    </nav>
-    <button class="nav-btn logout-btn" type="button" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i><span>Logout</span></button>
-  </aside>
-  <main id="mainArea">
-    <header id="topBar">
-      <button id="menuToggle" type="button" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
-      <h2 id="viewTitle">Feed</h2>
-      <button id="notifBtn" type="button"><i class="fas fa-bell"></i><span id="notifBadge" class="badge hidden">0</span></button>
-    </header>
-    <div id="viewContent"></div>
-  </main>
-</div>
+<div id="mainApp" style="display:none">
+  <header class="top-bar">
+    <span class="logo">🎉 Vibe Hub</span>
+    <span id="topCoins" class="coins">💰 0</span>
+  </header>
 
-<div id="gameModal" class="modal hidden">
-  <div class="modal-box game-box">
-    <div class="game-top">
-      <h2 id="gameTitle">Game</h2>
-      <div class="game-top-right">
-        <span id="gameScoreHud">Score: 0</span>
-        <button class="btn-close" type="button" onclick="closeGame()">✕</button>
-      </div>
+  <div id="viewFeed" class="view active">
+    <h2>✨ Spotlight</h2>
+    <div class="post-box">
+      <textarea id="postText" placeholder="What's on your mind?" rows="3"></textarea>
+      <button class="btn-primary" onclick="createPost()">Post</button>
     </div>
-    <canvas id="gameCanvas" width="400" height="500"></canvas>
-    <p id="gameHint"></p>
+    <div id="feedList"></div>
   </div>
+
+  <div id="viewGames" class="view">
+    <h2>🎮 Games</h2>
+    <div id="gameGrid" class="game-grid"></div>
+  </div>
+
+  <div id="viewChat" class="view">
+    <h2>💬 Chat Rooms</h2>
+    <div id="chatRooms"></div>
+  </div>
+
+  <div id="viewLeader" class="view">
+    <h2>🏆 Leaderboard</h2>
+    <div id="leaderList"></div>
+  </div>
+
+  <div id="viewProfile" class="view">
+    <h2>👤 Profile</h2>
+    <div id="profileInfo"></div>
+    <button class="btn-premium" onclick="buyPremium()">⭐ Go Premium</button>
+    <button class="btn-admin" id="adminBtn" style="display:none" onclick="showView('admin')">Admin Panel</button>
+    <button class="btn-danger" onclick="doLogout()">Logout</button>
+  </div>
+
+  <div id="viewAdmin" class="view">
+    <h2>🔧 Admin Dashboard</h2>
+    <div id="adminStats"></div>
+    <button class="btn-primary" onclick="doWithdraw()">💸 Withdraw Earnings</button>
+    <button class="btn-danger" onclick="showView('profile')">← Back</button>
+  </div>
+
+  <nav id="bottomNav">
+    <button onclick="showView('feed')"><i class="fas fa-home"></i><span>Feed</span></button>
+    <button onclick="showView('games')"><i class="fas fa-gamepad"></i><span>Games</span></button>
+    <button onclick="showView('chat')"><i class="fas fa-comments"></i><span>Chat</span></button>
+    <button onclick="showView('leader')"><i class="fas fa-trophy"></i><span>Rank</span></button>
+    <button onclick="showView('profile')"><i class="fas fa-user"></i><span>Me</span></button>
+  </nav>
 </div>
 
-<div id="installBanner" class="hidden" style="position:fixed;bottom:0;left:0;right:0;background:var(--grad);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;z-index:2000">
-  <span style="font-weight:700">Install Vibe Hub on your phone!</span>
-  <div style="display:flex;gap:8px">
-    <button class="btn-small" style="background:#fff;color:#000" type="button" onclick="installPWA()">Install</button>
-    <button class="btn-small" style="background:rgba(255,255,255,.2);color:#fff" type="button" onclick="this.parentElement.parentElement.classList.add('hidden')">Later</button>
+<div id="gameModal" class="modal" style="display:none">
+  <div class="modal-header">
+    <span id="gameTitle">Game</span>
+    <button class="btn-close" onclick="closeGame()">✕</button>
+  </div>
+  <div id="gameArea" class="game-area"></div>
+  <div id="gameScore" class="game-score"></div>
+</div>
+
+<div id="chatModal" class="modal" style="display:none">
+  <div class="modal-header">
+    <button class="btn-close" onclick="closeChat()">← Back</button>
+    <span id="chatRoomName"></span>
+  </div>
+  <div id="chatMessages" class="chat-messages"></div>
+  <div class="chat-input-bar">
+    <input id="chatInput" type="text" placeholder="Type a message...">
+    <button class="btn-primary" onclick="sendMessage()">Send</button>
   </div>
 </div>
 

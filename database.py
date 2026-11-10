@@ -49,8 +49,8 @@ def init_db():
     );
     """)
     h = hash_pw(ADMIN["default_password"])
-    c.execute("SELECT id FROM users WHERE username=?", (ADMIN["username"],))
-    if not c.fetchone():
+    row = c.execute("SELECT id FROM users WHERE username=?", (ADMIN["username"],)).fetchone()
+    if not row:
         c.execute("INSERT INTO users (username,email,password,is_admin,premium,created_at) VALUES (?,?,?,?,?,?)",
                   (ADMIN["username"],"admin@vibehub.com",h,1,1,time.time()))
     else:

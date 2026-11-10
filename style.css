@@ -38,6 +38,8 @@ input,textarea,button{font-family:inherit}
 .post-card p{color:#ddd;font-size:15px;line-height:1.5;margin-bottom:8px}
 .post-card .post-img{width:100%;border-radius:12px;margin-top:8px;max-height:300px;object-fit:cover}
 .post-stats{color:#888;font-size:13px}
+.like-btn{cursor:pointer;padding:4px 8px;border-radius:8px;transition:background .2s}
+.like-btn:active{background:rgba(239,68,68,0.2)}
 .empty{color:#555;text-align:center;padding:40px 0;font-size:15px}
 .game-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .game-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:16px 8px;text-align:center;cursor:pointer;position:relative}

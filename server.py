@@ -374,4 +374,5 @@ def admin_withdraw():
 if __name__ == '__main__':
     init_db()
     print(f"\n  🎮  Vibe Hub running at http://localhost:{PORT}\n")
-    app.run(host=HOST, port=PORT, debug=DEBUG)
+    import os
+app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

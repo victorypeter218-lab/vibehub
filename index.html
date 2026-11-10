@@ -48,7 +48,17 @@
     <h2>✨ Spotlight</h2>
     <div class="post-box">
       <textarea id="postText" placeholder="What's on your mind?" rows="2"></textarea>
-      <button class="btn-primary" onclick="createPost()">Post</button>
+      <div id="imgPreview" class="img-preview" style="display:none">
+        <img id="imgPreviewSrc" src="">
+        <button class="img-remove" onclick="removeImage()">✕</button>
+      </div>
+      <div class="post-actions">
+        <label class="img-btn">
+          <i class="fas fa-camera"></i> Photo
+          <input type="file" id="imgInput" accept="image/*" onchange="handleImage(event)" hidden>
+        </label>
+        <button class="btn-primary post-btn" onclick="createPost()">Post</button>
+      </div>
     </div>
     <div id="feedList"></div>
   </div>
@@ -78,9 +88,16 @@
 
   <div id="viewAdmin" class="view">
     <h2>🔧 Admin Dashboard</h2>
-    <div id="adminStats"></div>
-    <button class="btn-primary" onclick="doWithdraw()" style="margin-bottom:10px">💸 Withdraw Earnings</button>
-    <button class="btn-danger" onclick="showView('profile')">← Back to Profile</button>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="adminTab('earnings')">💰 Earnings</button>
+      <button class="admin-tab" onclick="adminTab('users')">👥 Users</button>
+      <button class="admin-tab" onclick="adminTab('flow')">📊 Flow</button>
+    </div>
+    <div id="adminEarnings" class="admin-panel active"></div>
+    <div id="adminUsers" class="admin-panel"></div>
+    <div id="adminFlow" class="admin-panel"></div>
+    <button class="btn-primary" onclick="doWithdraw()" style="margin-top:16px">💸 Withdraw Earnings</button>
+    <button class="btn-danger" onclick="showView('profile')" style="margin-top:8px">← Back</button>
   </div>
 
   <nav id="bottomNav">

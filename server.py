@@ -33,9 +33,13 @@ def register():
     d = request.json
     if not d or not d.get("username") or not d.get("email") or not d.get("password"):
         return jsonify({"error": "All fields required"})
+    if len(d["username"].strip()) < 3:
+        return jsonify({"error": "Username must be 3+ characters"})
+    if len(d["password"]) < 4:
+        return jsonify({"error": "Password must be 4+ characters"})
     uid = create_user(d["username"].strip(), d["email"].strip(), d["password"])
     if not uid:
-        return jsonify({"error": "Username or email taken"})
+        return jsonify({"error": "Username or email already taken"})
     return jsonify({"token": make_token(uid)})
 
 @app.route("/api/login", methods=["POST"])
@@ -43,7 +47,7 @@ def login():
     d = request.json
     if not d: return jsonify({"error": "No data"})
     u = login_user(d.get("username", ""), d.get("password", ""))
-    if not u: return jsonify({"error": "Wrong credentials"})
+    if not u: return jsonify({"error": "Wrong username or password"})
     return jsonify({"token": make_token(u["id"])})
 
 @app.route("/api/status")
@@ -59,9 +63,9 @@ def feed():
     for p in posts:
         age = time.time() - p["created_at"]
         if age < 60: p["time"] = "just now"
-        elif age < 3600: p["time"] = f"{int(age/60)}m ago"
-        elif age < 86400: p["time"] = f"{int(age/3600)}h ago"
-        else: p["time"] = f"{int(age/86400)}d ago"
+        elif age < 3600: p["time"] = str(int(age/60)) + "m ago"
+        elif age < 86400: p["time"] = str(int(age/3600)) + "h ago"
+        else: p["time"] = str(int(age/86400)) + "d ago"
     return jsonify({"posts": posts})
 
 @app.route("/api/post", methods=["POST"])
@@ -73,6 +77,16 @@ def post():
     image = d.get("image", "")
     if not text and not image: return jsonify({"error": "Write something"})
     create_post(u["id"], u["username"], text, image)
+    return jsonify({"success": True})
+
+@app.route("/api/like", methods=["POST"])
+def like():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    d = request.json
+    pid = d.get("post_id")
+    if not pid: return jsonify({"error": "No post"})
+    like_post(pid)
     return jsonify({"success": True})
 
 @app.route("/api/chat/rooms")
@@ -96,7 +110,7 @@ def send_chat():
 def game_play():
     u = auth(request)
     if not u: return jsonify({"error": "Login first"})
-    record_earning("game", EARN_PER_GAME, f"Game by {u['username']}")
+    record_earning("game", EARN_PER_GAME, "Game by " + u["username"])
     return jsonify({"success": True})
 
 @app.route("/api/leaderboard")
@@ -119,7 +133,7 @@ def premium():
     c.execute("UPDATE users SET premium=1 WHERE id=?", (u["id"],))
     c.commit()
     c.close()
-    record_earning("premium", PREMIUM_PRICE, f"Premium: {u['username']}")
+    record_earning("premium", PREMIUM_PRICE, "Premium: " + u["username"])
     return jsonify({"success": True})
 
 @app.route("/api/admin/stats")
@@ -155,9 +169,9 @@ def admin_transactions():
     for t in data["recent"]:
         age = time.time() - t["created_at"]
         if age < 60: t["time"] = "just now"
-        elif age < 3600: t["time"] = f"{int(age/60)}m ago"
-        elif age < 86400: t["time"] = f"{int(age/3600)}h ago"
-        else: t["time"] = f"{int(age/86400)}d ago"
+        elif age < 3600: t["time"] = str(int(age/60)) + "m ago"
+        elif age < 86400: t["time"] = str(int(age/3600)) + "h ago"
+        else: t["time"] = str(int(age/86400)) + "d ago"
     return jsonify({"transactions": data["recent"]})
 
 @app.route("/api/admin/withdraw", methods=["POST"])
@@ -166,7 +180,7 @@ def withdraw():
     if not u or not u["is_admin"]: return jsonify({"error": "Admin only"})
     d = request.json
     amt = d.get("amount", 0)
-    return jsonify({"success": True, "message": f"₦{amt:,.0f} withdrawal to {ADMIN['bank']} ({ADMIN['account_number']}) processing"})
+    return jsonify({"success": True, "message": "Withdrawal of N" + str(amt) + " to " + ADMIN["bank"] + " (" + ADMIN["account_number"] + ") processing"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

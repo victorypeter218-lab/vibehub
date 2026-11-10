@@ -1,12 +1,10 @@
 {
   "name": "Vibe Hub",
   "short_name": "VibeHub",
-  "description": "Connect, Play, Vibe",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f0f1a",
+  "background_color": "#0a0a1a",
   "theme_color": "#7c3aed",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "icon-192.png",

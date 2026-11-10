@@ -1,378 +1,172 @@
+import os, time, jwt
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import hashlib, secrets, time, sqlite3, os
 from config import *
-from database import get_db, init_db
+from database import *
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder='.')
 CORS(app)
+init_db()
 
-# ── helpers ──────────────────────────────────────────────
-def hash_pw(p):
-    return hashlib.sha256(p.encode()).hexdigest()
+def auth(req):
+    t = req.headers.get("Authorization", "").replace("Bearer ", "")
+    if not t: return None
+    try:
+        d = jwt.decode(t, SECRET_KEY, algorithms=["HS256"])
+        return get_user(d["uid"])
+    except:
+        return None
 
-def db():
-    c = get_db()
-    c.row_factory = sqlite3.Row
-    return c
+def make_token(uid):
+    return jwt.encode({"uid": uid, "exp": time.time() + 86400 * 30}, SECRET_KEY, algorithm="HS256")
 
-def auth(f):
-    from functools import wraps
-    @wraps(f)
-    def wrap(*a, **kw):
-        tk = request.headers.get('Authorization', '').replace('Bearer ', '')
-        u = db().execute("SELECT * FROM users WHERE token=?", (tk,)).fetchone()
-        if not u:
-            return jsonify(error="Unauthorized"), 401
-        request.user = u
-        return f(*a, **kw)
-    return wrap
-
-def earn(source, amount, uid=None):
-    d = db()
-    d.execute("INSERT INTO admin_earnings(source,amount,user_id,status,created_at) VALUES(?,?,?,?,?)",
-              (source, amount, uid, 'available', time.time()))
-    d.commit()
-
-def add_xp(uid, n):
-    d = db()
-    d.execute("UPDATE users SET xp=xp+? WHERE id=?", (n, uid))
-    r = d.execute("SELECT xp,level FROM users WHERE id=?", (uid,)).fetchone()
-    nl = r['xp'] // 1000 + 1
-    if nl > r['level']:
-        d.execute("UPDATE users SET level=? WHERE id=?", (nl, uid))
-    d.commit()
-
-def user_dict(u):
-    return dict(id=u['id'], username=u['username'], display_name=u['display_name'],
-                level=u['level'], xp=u['xp'], is_premium=u['is_premium'],
-                is_admin=(u['username'] == ADMIN['username']))
-
-# ── static files ─────────────────────────────────────────
-@app.route('/')
+@app.route("/")
 def index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(".", "index.html")
 
-@app.route('/<path:f>')
-def statics(f):
-    if f.endswith(('.css', '.js', '.png', '.jpg', '.ico')):
-        return send_from_directory('.', f)
-    return 'Not found', 404
+@app.route("/<path:f>")
+def static_files(f):
+    return send_from_directory(".", f)
 
-# ── auth ─────────────────────────────────────────────────
-@app.route('/api/register', methods=['POST'])
+@app.route("/api/register", methods=["POST"])
 def register():
-    d = request.json or {}
-    un = d.get('username', '').strip().lower()
-    pw = d.get('password', '')
-    dn = d.get('display_name', un)
-    if not un or not pw:
-        return jsonify(error="Username & password required"), 400
-    c = db()
-    if c.execute("SELECT id FROM users WHERE username=?", (un,)).fetchone():
-        return jsonify(error="Username taken"), 400
-    tk = secrets.token_hex(32)
-    c.execute("INSERT INTO users(username,password,display_name,token,level,xp,is_premium,total_logins,last_login,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-              (un, hash_pw(pw), dn, tk, 1, 0, 0, 1, time.time(), time.time()))
-    c.commit()
-    uid = c.execute("SELECT id FROM users WHERE username=?", (un,)).fetchone()['id']
-    earn('signup', EARN_PER_SIGNUP, uid)
-    add_xp(uid, 50)
-    u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-    return jsonify(token=tk, user=user_dict(u))
+    d = request.json
+    if not d or not d.get("username") or not d.get("email") or not d.get("password"):
+        return jsonify({"error": "All fields required"})
+    uid = create_user(d["username"].strip(), d["email"].strip(), d["password"])
+    if not uid:
+        return jsonify({"error": "Username or email taken"})
+    return jsonify({"token": make_token(uid)})
 
-@app.route('/api/login', methods=['POST'])
+@app.route("/api/login", methods=["POST"])
 def login():
-    d = request.json or {}
-    un = d.get('username', '').strip().lower()
-    pw = d.get('password', '')
-    c = db()
-    u = c.execute("SELECT * FROM users WHERE username=? AND password=?", (un, hash_pw(pw))).fetchone()
-    if not u:
-        return jsonify(error="Invalid credentials"), 401
-    tk = secrets.token_hex(32)
-    c.execute("UPDATE users SET token=?,total_logins=total_logins+1,last_login=? WHERE id=?",
-              (tk, time.time(), u['id']))
-    c.commit()
-    earn('login', EARN_PER_LOGIN, u['id'])
-    add_xp(u['id'], 20)
-    u2 = c.execute("SELECT * FROM users WHERE id=?", (u['id'],)).fetchone()
-    return jsonify(token=tk, user=user_dict(u2))
+    d = request.json
+    if not d: return jsonify({"error": "No data"})
+    u = login_user(d.get("username", ""), d.get("password", ""))
+    if not u: return jsonify({"error": "Wrong credentials"})
+    return jsonify({"token": make_token(u["id"])})
 
-@app.route('/api/logout', methods=['POST'])
-@auth
-def logout():
-    c = db()
-    c.execute("UPDATE users SET token='' WHERE id=?", (request.user['id'],))
-    c.commit()
-    return jsonify(ok=True)
-
-@app.route('/api/status')
-@auth
+@app.route("/api/status")
 def status():
-    return jsonify(ok=True, user=user_dict(request.user))
+    u = auth(request)
+    if not u: return jsonify({"error": "Not logged in"})
+    return jsonify({"username": u["username"], "coins": u["coins"], "xp": u["xp"],
+                    "premium": u["premium"] or u["is_admin"], "is_admin": u["is_admin"]})
 
-# ── feed ─────────────────────────────────────────────────
-@app.route('/api/posts')
-@auth
-def get_posts():
-    c = db()
-    rows = c.execute("""SELECT p.*, u.display_name, u.username,
-                        (SELECT COUNT(*) FROM post_likes WHERE post_id=p.id) AS likes,
-                        (SELECT COUNT(*) FROM comments WHERE post_id=p.id) AS cmt_count
-                        FROM posts p JOIN users u ON p.user_id=u.id
-                        ORDER BY p.created_at DESC LIMIT 50""").fetchall()
-    posts = []
-    for r in rows:
-        p = dict(r)
-        p['liked'] = bool(c.execute("SELECT id FROM post_likes WHERE post_id=? AND user_id=?",
-                                     (r['id'], request.user['id'])).fetchone())
-        posts.append(p)
-    return jsonify(posts=posts)
+@app.route("/api/feed")
+def feed():
+    posts = get_posts()
+    for p in posts:
+        age = time.time() - p["created_at"]
+        if age < 60: p["time"] = "just now"
+        elif age < 3600: p["time"] = f"{int(age/60)}m ago"
+        elif age < 86400: p["time"] = f"{int(age/3600)}h ago"
+        else: p["time"] = f"{int(age/86400)}d ago"
+    return jsonify({"posts": posts})
 
-@app.route('/api/posts/create', methods=['POST'])
-@auth
-def create_post():
-    d = request.json or {}
-    content = d.get('content', '').strip()
-    if not content:
-        return jsonify(error="Post cannot be empty"), 400
-    c = db()
-    c.execute("INSERT INTO posts(user_id,content,media_type,media_data,created_at) VALUES(?,?,?,?,?)",
-              (request.user['id'], content, d.get('media_type', ''), d.get('media_data', ''), time.time()))
-    c.commit()
-    earn('post', EARN_PER_POST, request.user['id'])
-    add_xp(request.user['id'], 15)
-    return jsonify(ok=True)
+@app.route("/api/post", methods=["POST"])
+def post():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    d = request.json
+    text = d.get("text", "").strip()
+    image = d.get("image", "")
+    if not text and not image: return jsonify({"error": "Write something"})
+    create_post(u["id"], u["username"], text, image)
+    return jsonify({"success": True})
 
-@app.route('/api/posts/<int:pid>/like', methods=['POST'])
-@auth
-def like_post(pid):
-    c = db()
-    existing = c.execute("SELECT id FROM post_likes WHERE post_id=? AND user_id=?",
-                         (pid, request.user['id'])).fetchone()
-    if existing:
-        c.execute("DELETE FROM post_likes WHERE id=?", (existing['id'],))
-    else:
-        c.execute("INSERT INTO post_likes(post_id,user_id) VALUES(?,?)", (pid, request.user['id']))
-    c.commit()
-    cnt = c.execute("SELECT COUNT(*) AS c FROM post_likes WHERE post_id=?", (pid,)).fetchone()['c']
-    return jsonify(likes=cnt, liked=not bool(existing))
+@app.route("/api/chat/rooms")
+def rooms():
+    return jsonify({"rooms": get_rooms()})
 
-@app.route('/api/posts/<int:pid>/comments')
-@auth
-def get_comments(pid):
-    c = db()
-    rows = c.execute("SELECT cm.*, u.display_name FROM comments cm JOIN users u ON cm.user_id=u.id WHERE cm.post_id=? ORDER BY cm.created_at", (pid,)).fetchall()
-    return jsonify(comments=[dict(r) for r in rows])
+@app.route("/api/chat/messages")
+def messages():
+    room = request.args.get("room", "General")
+    return jsonify({"messages": get_chats(room)})
 
-@app.route('/api/posts/<int:pid>/comment', methods=['POST'])
-@auth
-def add_comment(pid):
-    d = request.json or {}
-    txt = d.get('text', '').strip()
-    if not txt:
-        return jsonify(error="Empty comment"), 400
-    c = db()
-    c.execute("INSERT INTO comments(post_id,user_id,text,created_at) VALUES(?,?,?,?)",
-              (pid, request.user['id'], txt, time.time()))
-    c.commit()
-    earn('chat', EARN_PER_CHAT, request.user['id'])
-    return jsonify(ok=True)
+@app.route("/api/chat/send", methods=["POST"])
+def send_chat():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    d = request.json
+    add_chat(d.get("room", "General"), u["username"], d.get("text", ""))
+    return jsonify({"success": True})
 
-# ── friends ──────────────────────────────────────────────
-@app.route('/api/friends/<int:uid>')
-@auth
-def get_friends(uid):
-    c = db()
-    rows = c.execute("""SELECT u.id, u.username, u.display_name, f.status, f.id AS fid
-                        FROM friends f JOIN users u ON (
-                          CASE WHEN f.user_id=? THEN f.friend_id ELSE f.user_id END = u.id
-                        ) WHERE (f.user_id=? OR f.friend_id=?) """, (uid, uid, uid)).fetchall()
-    return jsonify(friends=[dict(r) for r in rows])
+@app.route("/api/game/play", methods=["POST"])
+def game_play():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    record_earning("game", EARN_PER_GAME, f"Game by {u['username']}")
+    return jsonify({"success": True})
 
-@app.route('/api/friends/add', methods=['POST'])
-@auth
-def add_friend():
-    d = request.json or {}
-    fid = d.get('friend_id')
-    if fid == request.user['id']:
-        return jsonify(error="Cannot add yourself"), 400
-    c = db()
-    if c.execute("SELECT id FROM friends WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)",
-                 (request.user['id'], fid, fid, request.user['id'])).fetchone():
-        return jsonify(error="Already friends or pending"), 400
-    c.execute("INSERT INTO friends(user_id,friend_id,status) VALUES(?,?,?)",
-              (request.user['id'], fid, 'pending'))
-    c.commit()
-    return jsonify(ok=True)
-
-@app.route('/api/friends/accept', methods=['POST'])
-@auth
-def accept_friend():
-    d = request.json or {}
-    fid = d.get('friend_id')
-    c = db()
-    c.execute("UPDATE friends SET status='accepted' WHERE id=? AND friend_id=?",
-              (fid, request.user['id']))
-    c.commit()
-    return jsonify(ok=True)
-
-# ── chat ─────────────────────────────────────────────────
-@app.route('/api/rooms')
-@auth
-def get_rooms():
-    c = db()
-    rows = c.execute("SELECT r.*, (SELECT COUNT(*) FROM room_members WHERE room_id=r.id) AS members FROM rooms r ORDER BY r.created_at").fetchall()
-    return jsonify(rooms=[dict(r) for r in rows])
-
-@app.route('/api/rooms/create', methods=['POST'])
-@auth
-def create_room():
-    d = request.json or {}
-    name = d.get('name', '').strip()
-    if not name:
-        return jsonify(error="Name required"), 400
-    c = db()
-    c.execute("INSERT INTO rooms(name,created_at) VALUES(?,?)", (name, time.time()))
-    c.commit()
-    rid = c.execute("SELECT last_insert_rowid() AS id").fetchone()['id']
-    c.execute("INSERT INTO room_members(room_id,user_id) VALUES(?,?)", (rid, request.user['id']))
-    c.commit()
-    return jsonify(ok=True, room_id=rid)
-
-@app.route('/api/rooms/<int:rid>/join', methods=['POST'])
-@auth
-def join_room(rid):
-    c = db()
-    if not c.execute("SELECT id FROM room_members WHERE room_id=? AND user_id=?", (rid, request.user['id'])).fetchone():
-        c.execute("INSERT INTO room_members(room_id,user_id) VALUES(?,?)", (rid, request.user['id']))
-        c.commit()
-    return jsonify(ok=True)
-
-@app.route('/api/rooms/<int:rid>/messages')
-@auth
-def get_messages(rid):
-    c = db()
-    rows = c.execute("SELECT m.*, u.display_name, u.username FROM messages m JOIN users u ON m.user_id=u.id WHERE m.room_id=? ORDER BY m.created_at DESC LIMIT 100", (rid,)).fetchall()
-    return jsonify(messages=[dict(r) for r in reversed(rows)])
-
-@app.route('/api/rooms/<int:rid>/send', methods=['POST'])
-@auth
-def send_msg(rid):
-    d = request.json or {}
-    txt = d.get('text', '').strip()
-    if not txt:
-        return jsonify(error="Empty message"), 400
-    c = db()
-    c.execute("INSERT INTO messages(room_id,user_id,text,created_at) VALUES(?,?,?,?)",
-              (rid, request.user['id'], txt, time.time()))
-    c.commit()
-    earn('chat', EARN_PER_CHAT, request.user['id'])
-    add_xp(request.user['id'], 5)
-    return jsonify(ok=True)
-
-# ── games ────────────────────────────────────────────────
-@app.route('/api/games')
-@auth
-def get_games():
-    c = db()
-    rows = c.execute("SELECT * FROM games ORDER BY id").fetchall()
-    return jsonify(games=[dict(r) for r in rows])
-
-@app.route('/api/games/score', methods=['POST'])
-@auth
-def game_score():
-    d = request.json or {}
-    gid = d.get('game_id')
-    score = d.get('score', 0)
-    c = db()
-    g = c.execute("SELECT * FROM games WHERE id=?", (gid,)).fetchone()
-    if not g:
-        return jsonify(error="Game not found"), 404
-    if g['premium_only'] and not request.user['is_premium']:
-        return jsonify(error="Premium required"), 403
-    c.execute("INSERT INTO game_scores(game_id,user_id,score,created_at) VALUES(?,?,?,?)",
-              (gid, request.user['id'], score, time.time()))
-    c.execute("UPDATE games SET plays=plays+1 WHERE id=?", (gid,))
-    c.commit()
-    earn('game', EARN_PER_GAME, request.user['id'])
-    add_xp(request.user['id'], 30)
-    return jsonify(ok=True)
-
-@app.route('/api/leaderboard')
-@auth
+@app.route("/api/leaderboard")
 def leaderboard():
-    c = db()
-    rows = c.execute("""SELECT u.display_name, u.username, u.level, u.xp, u.is_premium,
-                        (SELECT COALESCE(MAX(score),0) FROM game_scores WHERE user_id=u.id) AS best
-                        FROM users u ORDER BY u.xp DESC LIMIT 50""").fetchall()
-    return jsonify(leaderboard=[dict(r) for r in rows])
+    return jsonify({"users": get_leaderboard()})
 
-# ── notifications ────────────────────────────────────────
-@app.route('/api/notifications/<int:uid>')
-@auth
-def get_notifs(uid):
-    c = db()
-    rows = c.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 30", (uid,)).fetchall()
-    return jsonify(notifications=[dict(r) for r in rows])
+@app.route("/api/profile")
+def profile():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    return jsonify({"username": u["username"], "coins": u["coins"], "xp": u["xp"],
+                    "premium": u["premium"] or u["is_admin"]})
 
-# ── premium ──────────────────────────────────────────────
-@app.route('/api/premium/init', methods=['POST'])
-@auth
-def premium_init():
-    c = db()
-    if request.user['is_premium']:
-        return jsonify(error="Already premium"), 400
-    c.execute("UPDATE users SET is_premium=1 WHERE id=?", (request.user['id'],))
+@app.route("/api/premium", methods=["POST"])
+def premium():
+    u = auth(request)
+    if not u: return jsonify({"error": "Login first"})
+    if u["premium"]: return jsonify({"error": "Already premium"})
+    c = get_db()
+    c.execute("UPDATE users SET premium=1 WHERE id=?", (u["id"],))
     c.commit()
-    earn('premium', PREMIUM_PRICE, request.user['id'])
-    return jsonify(ok=True)
+    c.close()
+    record_earning("premium", PREMIUM_PRICE, f"Premium: {u['username']}")
+    return jsonify({"success": True})
 
-# ── admin ────────────────────────────────────────────────
-@app.route('/api/admin/stats')
-@auth
+@app.route("/api/admin/stats")
 def admin_stats():
-    if request.user['username'] != ADMIN['username']:
-        return jsonify(error="Forbidden"), 403
-    c = db()
-    total = c.execute("SELECT COALESCE(SUM(amount),0) AS s FROM admin_earnings").fetchone()['s']
-    avail = c.execute("SELECT COALESCE(SUM(amount),0) AS s FROM admin_earnings WHERE status='available'").fetchone()['s']
-    today_start = time.time() - 86400
-    today = c.execute("SELECT COALESCE(SUM(amount),0) AS s FROM admin_earnings WHERE created_at>?", (today_start,)).fetchone()['s']
-    users = c.execute("SELECT COUNT(*) AS c FROM users").fetchone()['c']
-    breakdown = {}
-    for row in c.execute("SELECT source, SUM(amount) AS s FROM admin_earnings GROUP BY source").fetchall():
-        breakdown[row['source']] = row['s']
-    return jsonify(total=total, available=avail, today=today, users=users, breakdown=breakdown)
+    u = auth(request)
+    if not u or not u["is_admin"]: return jsonify({"error": "Admin only"})
+    data = get_earnings_breakdown()
+    cats = data["categories"]
+    return jsonify({
+        "total": data["total"],
+        "signup_earn": cats.get("signup", {}).get("total", 0),
+        "signup_count": cats.get("signup", {}).get("count", 0),
+        "login_earn": cats.get("login", {}).get("total", 0),
+        "login_count": cats.get("login", {}).get("count", 0),
+        "post_earn": cats.get("post", {}).get("total", 0),
+        "game_earn": cats.get("game", {}).get("total", 0),
+        "chat_earn": cats.get("chat", {}).get("total", 0),
+        "premium_earn": cats.get("premium", {}).get("total", 0),
+        "user_count": data["user_count"]
+    })
 
-@app.route('/api/admin/users')
-@auth
+@app.route("/api/admin/users")
 def admin_users():
-    if request.user['username'] != ADMIN['username']:
-        return jsonify(error="Forbidden"), 403
-    c = db()
-    rows = c.execute("SELECT id,username,display_name,level,xp,is_premium,total_logins,last_login,created_at FROM users ORDER BY created_at DESC").fetchall()
-    return jsonify(users=[dict(r) for r in rows])
+    u = auth(request)
+    if not u or not u["is_admin"]: return jsonify({"error": "Admin only"})
+    return jsonify({"users": get_all_users()})
 
-@app.route('/api/admin/withdraw', methods=['POST'])
-@auth
-def admin_withdraw():
-    if request.user['username'] != ADMIN['username']:
-        return jsonify(error="Forbidden"), 403
-    d = request.json or {}
-    amt = d.get('amount', 0)
-    c = db()
-    avail = c.execute("SELECT COALESCE(SUM(amount),0) AS s FROM admin_earnings WHERE status='available'").fetchone()['s']
-    if amt <= 0 or amt > avail:
-        return jsonify(error="Invalid amount"), 400
-    c.execute("UPDATE admin_earnings SET status='withdrawn' WHERE status='available'")
-    c.commit()
-    return jsonify(ok=True, withdrawn=amt, bank=ADMIN['bank'], account=ADMIN['account_number'])
+@app.route("/api/admin/transactions")
+def admin_transactions():
+    u = auth(request)
+    if not u or not u["is_admin"]: return jsonify({"error": "Admin only"})
+    data = get_earnings_breakdown()
+    for t in data["recent"]:
+        age = time.time() - t["created_at"]
+        if age < 60: t["time"] = "just now"
+        elif age < 3600: t["time"] = f"{int(age/60)}m ago"
+        elif age < 86400: t["time"] = f"{int(age/3600)}h ago"
+        else: t["time"] = f"{int(age/86400)}d ago"
+    return jsonify({"transactions": data["recent"]})
 
-# ── run ──────────────────────────────────────────────────
-if __name__ == '__main__':
-    init_db()
-    print(f"\n  🎮  Vibe Hub running at http://localhost:{PORT}\n")
-    import os
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+@app.route("/api/admin/withdraw", methods=["POST"])
+def withdraw():
+    u = auth(request)
+    if not u or not u["is_admin"]: return jsonify({"error": "Admin only"})
+    d = request.json
+    amt = d.get("amount", 0)
+    return jsonify({"success": True, "message": f"₦{amt:,.0f} withdrawal to {ADMIN['bank']} ({ADMIN['account_number']}) processing"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

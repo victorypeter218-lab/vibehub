@@ -68,14 +68,14 @@ def record_earning(category, amount, description=""):
 def create_user(username, email, password):
     c = get_db()
     try:
-        c.execute("INSERT INTO users (username,email,password,created_at) VALUES (?,?,?,?)",
+        cur = c.execute("INSERT INTO users (username,email,password,created_at) VALUES (?,?,?,?)",
                   (username, email, hash_pw(password), time.time()))
         c.commit()
-        uid = c.execute("SELECT lastrowid").fetchone()[0]
+        uid = cur.lastrowid
         c.close()
-        record_earning("signup", EARN_PER_SIGNUP, f"New user: {username}")
+        record_earning("signup", EARN_PER_SIGNUP, "New user: " + username)
         return uid
-    except:
+    except Exception as e:
         c.close()
         return None
 
@@ -87,7 +87,7 @@ def login_user(username, password):
         c.execute("UPDATE users SET last_login=? WHERE id=?", (time.time(), row["id"]))
         c.commit()
         c.close()
-        record_earning("login", EARN_PER_LOGIN, f"Login: {username}")
+        record_earning("login", EARN_PER_LOGIN, "Login: " + username)
         return dict(row)
     c.close()
     return None
@@ -110,13 +110,19 @@ def create_post(uid, username, text, image=""):
               (uid, username, text, image, time.time()))
     c.commit()
     c.close()
-    record_earning("post", EARN_PER_POST, f"Post by {username}")
+    record_earning("post", EARN_PER_POST, "Post by " + username)
 
 def get_posts():
     c = get_db()
     rows = c.execute("SELECT * FROM posts ORDER BY created_at DESC LIMIT 50").fetchall()
     c.close()
     return [dict(r) for r in rows]
+
+def like_post(post_id):
+    c = get_db()
+    c.execute("UPDATE posts SET likes = likes + 1 WHERE id=?", (post_id,))
+    c.commit()
+    c.close()
 
 def get_earnings_breakdown():
     c = get_db()
@@ -138,7 +144,7 @@ def add_chat(room, username, text):
               (room, username, text, time.time()))
     c.commit()
     c.close()
-    record_earning("chat", EARN_PER_CHAT, f"Chat by {username}")
+    record_earning("chat", EARN_PER_CHAT, "Chat by " + username)
 
 def get_chats(room):
     c = get_db()
